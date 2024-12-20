@@ -126,8 +126,9 @@ void vkt::HelloVK::initVulkan() {
     createGraphicsPipeline();        // Creates the graphics pipeline, which specifies shaders and their configuration.
     createFramebuffers();            // Creates framebuffers for each swap chain image.
     createCommandPool();             // Creates a command pool for managing command buffers.
-    createCommandBuffer();           // Creates the command buffer to record drawing commands.
     createPlaneBuffer();            // Creates buffers for passing data to shaders
+    //createPlaneIndexBuffer();
+    createCommandBuffer();           // Creates the command buffer to record drawing commands.
     createUniformBuffers();          // Creates uniform buffers for passing data to shaders (like MVP matrix).
     createDescriptorPool();          // Creates a descriptor pool to allocate resources like uniform buffers and textures.
     createDescriptorSets();          // Creates descriptor sets for shaders to access resources (like uniform buffers).
@@ -701,15 +702,14 @@ void vkt::HelloVK::createGraphicsPipeline() {
                                                       fragShaderStageInfo};
 
     // Store the binding and attribute descriptions in variables
-    VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
-    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions = Vertex::getAttributeDescriptions();
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
 
     // Setting up the vertex input info
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = 2;
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -767,9 +767,9 @@ void vkt::HelloVK::createGraphicsPipeline() {
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
-
     VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr,
                                     &pipelineLayout));
+
     std::vector<VkDynamicState> dynamicStateEnables = {VK_DYNAMIC_STATE_VIEWPORT,
                                                        VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicStateCI{};
@@ -927,8 +927,10 @@ void vkt::HelloVK::createDescriptorSets() {
 
 void vkt::HelloVK::createPlaneBuffer() {
     // Create a staging buffer to copy the vertex data
+    VkDeviceSize bufferSize = sizeof(planeVertices[0]) * planeVertices.size();
+
     createBuffer(
-            sizeof(planeVertices[0]) * planeVertices.size(),
+            bufferSize,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
             stagingBuffer,
@@ -943,7 +945,7 @@ void vkt::HelloVK::createPlaneBuffer() {
 
     // Create the actual vertex buffer for the plane
     createBuffer(
-            sizeof(planeVertices[0]) * planeVertices.size(),
+            bufferSize,
             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             planeVertexBuffer,
@@ -951,9 +953,30 @@ void vkt::HelloVK::createPlaneBuffer() {
     );
 
     // Copy data from the staging buffer to the vertex buffer
-    copyBuffer(stagingBuffer, planeVertexBuffer, sizeof(planeVertices[0]) * planeVertices.size());
+    copyBuffer(stagingBuffer, planeVertexBuffer, bufferSize);
 
     // Cleanup staging buffer
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingMemory, nullptr);
+}
+
+void vkt::HelloVK::createPlaneIndexBuffer() {
+    VkDeviceSize bufferSize = sizeof(planeVertices[0]) * planeVertices.size();
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer, stagingMemory);
+
+    void *data;
+    vkMapMemory(device, stagingMemory, 0, bufferSize, 0, &data);
+    memcpy(data, planeIndices.data(), (size_t) bufferSize);
+    vkUnmapMemory(device, stagingMemory);
+
+    createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, planeIndexBuffer, planeIndexBufferMemory);
+
+    copyBuffer(stagingBuffer, planeIndexBuffer, bufferSize);
+
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
 }
@@ -967,7 +990,9 @@ void vkt::HelloVK::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer));
+    if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
 
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
@@ -975,10 +1000,11 @@ void vkt::HelloVK::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex =
-            findMemoryType(memRequirements.memoryTypeBits, properties);
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
-    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory));
+    if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate vertex buffer memory!");
+    }
 
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
@@ -999,8 +1025,7 @@ uint32_t vkt::HelloVK::findMemoryType(uint32_t typeFilter,
             return i;
         }
     }
-
-    assert(false);  // failed to find suitable memory type!
+    throw std::runtime_error("failed to find suitable memory type!");
     return -1;
 }
 
@@ -1080,7 +1105,10 @@ void vkt::HelloVK::recordCommandBuffer(VkCommandBuffer commandBuffer,
     // Bind the plane vertex buffer and draw the plane
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &planeVertexBuffer, offsets);
+    //vkCmdBindIndexBuffer(commandBuffer, planeIndexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
     vkCmdDraw(commandBuffer, static_cast<uint32_t>(planeVertices.size()), 1, 0, 0);
+    //vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(planeIndices.size()), 1, 0, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
@@ -1261,6 +1289,12 @@ void vkt::HelloVK::cleanup() {
     vkDestroySampler(device, textureSampler, nullptr);
     vkDestroyImageView(device, textureImageView, nullptr);
     vkDestroyImage(device, textureImage, nullptr);
+
+    vkDestroyBuffer(device, planeIndexBuffer, nullptr);
+    vkFreeMemory(device, planeIndexBufferMemory, nullptr);
+
+    vkDestroyBuffer(device, planeVertexBuffer, nullptr);
+    vkFreeMemory(device, planeVertexBufferMemory, nullptr);
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroyBuffer(device, uniformBuffers[i], nullptr);

@@ -1,9 +1,10 @@
 #version 450
 
-in vec3 fragColor;  // Input color from vertex shader
+layout(location = 0) in vec3 fragColor; // Cor interpolada do vértice
 
-out vec4 color;     // Output color to the framebuffer
+layout(location = 0) out vec4 outColor; // Cor de saída para o framebuffer
 
 void main() {
-    color = vec4(fragColor, 1.0); // Set the color to the passed value with full opacity
+    // Define a cor de saída
+    outColor = vec4(fragColor, 1.0);
 }

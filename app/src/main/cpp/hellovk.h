@@ -36,7 +36,7 @@ namespace vkt {
         void operator()(ANativeWindow *window) { ANativeWindow_release(window); }
     };
 
-    const int MAX_FRAMES_IN_FLIGHT = 2; // Necessário para a sincronização de frames.
+    const int MAX_FRAMES_IN_FLIGHT = 2; // allocating space for two descriptors per frame (uniform buffer and texture)
 
     //############################################################################################//
     // Necessários para gestão de filas e swapchain.
@@ -94,7 +94,7 @@ namespace vkt {
         };
 
         struct Vertex {
-            glm::vec3 pos;   // Posição do vértice
+            glm::vec2 pos;   // Posição do vértice
             glm::vec3 color; // Cor do vértice
 
             static VkVertexInputBindingDescription getBindingDescription() {
@@ -162,6 +162,7 @@ namespace vkt {
         void updateUniformBuffer(uint32_t currentImage);
 
         void createPlaneBuffer();
+        void createPlaneIndexBuffer();
 
         // Métodos Auxiliares
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
@@ -237,14 +238,17 @@ namespace vkt {
 
         std::vector<Vertex> planeVertices = {
                 // Positions            // Colors
-                {{-1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-left corner
-                {{ 1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
-                {{-1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Top-left corner
-                {{ 1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
-                {{ 1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Top-right corner
-                {{-1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}  // Top-left corner
+                {{-1.0f, -1.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-left corner
+                {{ 1.0f, -1.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
+                {{-1.0f,  1.0f}, {0.1f, 0.1f, 0.1f}}, // Top-left corner
+                {{ 1.0f, -1.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
+                {{ 1.0f,  1.0f}, {0.1f, 0.1f, 0.1f}}, // Top-right corner
+                {{-1.0f,  1.0f}, {0.1f, 0.1f, 0.1f}}  // Top-left corner
         };
         VkBuffer planeVertexBuffer;
         VkDeviceMemory planeVertexBufferMemory;
+        const std::vector<uint16_t> planeIndices = {};
+        VkBuffer planeIndexBuffer;
+        VkDeviceMemory planeIndexBufferMemory;
     };
 }  // namespace vkt
