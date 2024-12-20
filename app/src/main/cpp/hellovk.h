@@ -5,6 +5,11 @@
 #include <assert.h>
 #include <vulkan/vulkan.h>
 
+#include <stb_image.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <array>
 #include <fstream>
 #include <map>
@@ -27,6 +32,15 @@ namespace vkt {
     }                                         \
   } while (0)
 
+    struct ANativeWindowDeleter { // Para android
+        void operator()(ANativeWindow *window) { ANativeWindow_release(window); }
+    };
+
+    const int MAX_FRAMES_IN_FLIGHT = 2; // Necessário para a sincronização de frames.
+
+    //############################################################################################//
+    // Necessários para gestão de filas e swapchain.
+
     /*
      * Each GPU has several families of queues that process different types of commands.
      *
@@ -36,8 +50,8 @@ namespace vkt {
      * Transfer (TRANSFER): Handles memory transfers.
      */
     struct QueueFamilyIndices {
-        std::optional <uint32_t> graphicsFamily;
-        std::optional <uint32_t> presentFamily;
+        std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
 
         bool isComplete() {
             return graphicsFamily.has_value() && presentFamily.has_value();
@@ -56,149 +70,181 @@ namespace vkt {
      */
     struct SwapChainSupportDetails {
         VkSurfaceCapabilitiesKHR capabilities;
-        std::vector <VkSurfaceFormatKHR> formats;
-        std::vector <VkPresentModeKHR> presentModes;
+        std::vector<VkSurfaceFormatKHR> formats;
+        std::vector<VkPresentModeKHR> presentModes;
     };
-
-    struct ANativeWindowDeleter {
-        void operator()(ANativeWindow *window) { ANativeWindow_release(window); }
-    };
-
-    const int MAX_FRAMES_IN_FLIGHT = 2;
+    //############################################################################################//
 
     class HelloVK {
     public:
+        // Inicialização e Renderização
         void initVulkan();
         void render();
         void cleanup();
         void cleanupSwapChain();
         void reset(ANativeWindow *newWindow, AAssetManager *newManager);
+
+        // Flags de Estado
         bool initialized = false;
 
+        struct UniformBufferObject {
+            glm::mat4 model;
+            glm::mat4 view;
+            glm::mat4 projection;
+        };
+
+        struct Vertex {
+            glm::vec3 pos;   // Posição do vértice
+            glm::vec3 color; // Cor do vértice
+
+            static VkVertexInputBindingDescription getBindingDescription() {
+                VkVertexInputBindingDescription bindingDescription{};
+                bindingDescription.binding = 0;
+                bindingDescription.stride = sizeof(Vertex);
+                bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                return bindingDescription;
+            }
+
+            static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+                std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+
+                // Posição (local 0)
+                attributeDescriptions[0].binding = 0;
+                attributeDescriptions[0].location = 0;
+                attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+                attributeDescriptions[0].offset = offsetof(Vertex, pos);
+
+                // Cor (local 1)
+                attributeDescriptions[1].binding = 0;
+                attributeDescriptions[1].location = 1;
+                attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+                attributeDescriptions[1].offset = offsetof(Vertex, color);
+
+                return attributeDescriptions;
+            }
+        };
+
     private:
-        void createDevice();
+        // ============================
+        // Métodos de Inicialização
+        // ============================
         void createInstance();
-        void createSurface();
         void setupDebugMessenger();
+        void createSurface();
         void pickPhysicalDevice();
         void createLogicalDeviceAndQueue();
+
+        // ============================
+        // Configuração de Renderização
+        // ============================
         void createSwapChain();
         void createImageViews();
-        void createTextureImage();
-        void decodeImage();
-        void createTextureImageViews();
-        void createTextureSampler();
-        void copyBufferToImage();
         void createRenderPass();
-        void createDescriptorSetLayout();
-        void createGraphicsPipeline();
+        void createDescriptorSetLayout(); // mexer aqui para trasnformações
+        void createGraphicsPipeline(); // specifies shaders and their configuration.
         void createFramebuffers();
         void createCommandPool();
         void createCommandBuffer();
         void createSyncObjects();
 
-        // Helper methods
-        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+        // ============================
+        // Gestão de Memória
+        // ============================
+        uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory);
 
-        bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-
-        bool isDeviceSuitable(VkPhysicalDevice device);
-
-        bool checkValidationLayerSupport();
-
-        std::vector<const char *> getRequiredExtensions(bool enableValidation);
-
-        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-
-        VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
-
-        VkShaderModule createShaderModule(const std::vector <uint8_t> &code);
-
-        void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-
-        void recreateSwapChain();
-
-        void onOrientationChange();
-
-        // Memory and resource management
-        uint32_t findMemoryType(uint32_t typeFilter,
-                                VkMemoryPropertyFlags properties);
-
-        void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                          VkMemoryPropertyFlags properties, VkBuffer &buffer,
-                          VkDeviceMemory &bufferMemory);
-
+        // ============================
+        // Gestão de Recursos
+        // ============================
+        void createDescriptorPool();
+        void createDescriptorSets(); // descriptor set is only used for the texture (or uniform data if you had one), and it's updated with the texture binding for the plane.
         void createUniformBuffers();
-
         void updateUniformBuffer(uint32_t currentImage);
 
-        void createDescriptorPool();
+        void createPlaneBuffer();
 
-        void createDescriptorSets();
-
+        // Métodos Auxiliares
+        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+        bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+        bool isDeviceSuitable(VkPhysicalDevice device);
+        bool checkValidationLayerSupport();
+        std::vector<const char *> getRequiredExtensions(bool enableValidation);
+        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+        VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+        VkShaderModule createShaderModule(const std::vector<uint8_t> &code);
+        void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+        void recreateSwapChain();
+        void onOrientationChange();
         void establishDisplaySizeIdentity();
+        void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-        std::unique_ptr <ANativeWindow, ANativeWindowDeleter> window;
-        AAssetManager *assetManager;
-
-        // Vulkan objects
+        // ============================
+        // Variáveis Vulkan
+        // ============================
         VkInstance instance;
         VkDebugUtilsMessengerEXT debugMessenger;
         VkSurfaceKHR surface;
         VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
         VkDevice device;
         VkSwapchainKHR swapChain;
-        std::vector <VkImage> swapChainImages;
         VkFormat swapChainImageFormat;
         VkExtent2D swapChainExtent;
-        VkExtent2D displaySizeIdentity;
-        std::vector <VkImageView> swapChainImageViews;
-        std::vector <VkFramebuffer> swapChainFramebuffers;
+        std::vector<VkImage> swapChainImages;
+        std::vector<VkImageView> swapChainImageViews;
+        std::vector<VkFramebuffer> swapChainFramebuffers;
         VkCommandPool commandPool;
-        std::vector <VkCommandBuffer> commandBuffers;
+        std::vector<VkCommandBuffer> commandBuffers;
         VkQueue graphicsQueue;
         VkQueue presentQueue;
         VkRenderPass renderPass;
-        VkDescriptorSetLayout descriptorSetLayout;
         VkPipelineLayout pipelineLayout;
         VkPipeline graphicsPipeline;
+        VkDescriptorSetLayout descriptorSetLayout;
+        VkExtent2D displaySizeIdentity;
 
-        // Synchronization objects
-        std::vector <VkBuffer> uniformBuffers;
-        std::vector <VkDeviceMemory> uniformBuffersMemory;
-        std::vector <VkSemaphore> imageAvailableSemaphores;
-        std::vector <VkSemaphore> renderFinishedSemaphores;
-        std::vector <VkFence> inFlightFences;
+        // Sincronização
+        std::vector<VkSemaphore> imageAvailableSemaphores;
+        std::vector<VkSemaphore> renderFinishedSemaphores;
+        std::vector<VkFence> inFlightFences;
         VkDescriptorPool descriptorPool;
-        std::vector <VkDescriptorSet> descriptorSets;
+        std::vector<VkDescriptorSet> descriptorSets;
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingMemory;
 
-        // Texture management
-        int textureWidth, textureHeight, textureChannels;
+        // Texturas
         VkImage textureImage;
         VkDeviceMemory textureImageMemory;
         VkImageView textureImageView;
         VkSampler textureSampler;
 
-        // Frame management
+        // Estado de Frame
         uint32_t currentFrame = 0;
         bool orientationChanged = false;
         VkSurfaceTransformFlagBitsKHR pretransformFlag;
+        std::unique_ptr<ANativeWindow, ANativeWindowDeleter> window;
+        AAssetManager *assetManager;
 
-        // Other Vulkan-specific helpers
-        /*
-         * In order to enable validation layer toggle this to true and
-         * follow the README.md instructions concerning the validation
-         * layers. You will be required to add separate vulkan validation
-         * '*.so' files in order to enable this.
-         *
-         * The validation layers are not shipped with the APK as they are sizeable.
-         */
+        // Validação e Extensões
         bool enableValidationLayers = false;
-        const std::vector<const char *> validationLayers = {
-                "VK_LAYER_KHRONOS_validation"};
-        const std::vector<const char *> deviceExtensions = {
-                VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
+        const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+
+        // ============================
+        // Buffers e Recursos
+        // ============================
+        std::vector <VkBuffer> uniformBuffers;
+        std::vector <VkDeviceMemory> uniformBufferMemory;
+
+        std::vector<Vertex> planeVertices = {
+                // Positions            // Colors
+                {{-1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-left corner
+                {{ 1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
+                {{-1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Top-left corner
+                {{ 1.0f, -1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Bottom-right corner
+                {{ 1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}, // Top-right corner
+                {{-1.0f,  1.0f, 0.0f}, {0.1f, 0.1f, 0.1f}}  // Top-left corner
+        };
+        VkBuffer planeVertexBuffer;
+        VkDeviceMemory planeVertexBufferMemory;
     };
 }  // namespace vkt

@@ -108,20 +108,16 @@ static void DestroyDebugUtilsMessengerEXT(
     }
 }
 
-struct UniformBufferObject {
-    glm::mat4 mvp;
-};
-
 // -------------------------------------------------------------------------------------------------
 // -------------------------------- Hello VK functions implementation ------------------------------
 // -------------------------------------------------------------------------------------------------
 
 void vkt::HelloVK::initVulkan() {
     createInstance();                // Creates the Vulkan instance.
+    setupDebugMessenger();           // Sets up debugging tools (optional, but very useful for development).
     createSurface();                 // Creates a surface for the swap chain, typically platform-specific (e.g., GLFW, Win32, etc.).
     pickPhysicalDevice();            // Selects the physical device (GPU) based on supported features and preferences.
     createLogicalDeviceAndQueue();   // Creates a logical device (GPU abstraction) and command queues.
-    setupDebugMessenger();           // Sets up debugging tools (optional, but very useful for development).
     establishDisplaySizeIdentity();  // Initializes display size and other related parameters.
     createSwapChain();               // Creates the swap chain, which is a collection of images to display on the screen.
     createImageViews();              // Creates image views for the swap chain images.
@@ -131,21 +127,13 @@ void vkt::HelloVK::initVulkan() {
     createFramebuffers();            // Creates framebuffers for each swap chain image.
     createCommandPool();             // Creates a command pool for managing command buffers.
     createCommandBuffer();           // Creates the command buffer to record drawing commands.
-    decodeImage();                   // Decodes image data (possibly loading textures).
-    createTextureImage();            // Creates an image for storing the texture.
-    copyBufferToImage();             // Copies the texture data to the created image.
-    createTextureImageViews();       // Creates image views for the texture images.
-    createTextureSampler();          // Creates a texture sampler for sampling the texture in shaders.
+    createPlaneBuffer();            // Creates buffers for passing data to shaders
     createUniformBuffers();          // Creates uniform buffers for passing data to shaders (like MVP matrix).
     createDescriptorPool();          // Creates a descriptor pool to allocate resources like uniform buffers and textures.
     createDescriptorSets();          // Creates descriptor sets for shaders to access resources (like uniform buffers).
     createSyncObjects();             // Creates synchronization objects (like semaphores and fences) for handling GPU synchronization.
     initialized = true;              // Marks the Vulkan initialization as complete.
 }
-
-// -------------------------------------------------------------------------------------------------
-// #1. Setup process - vulkan instance and device
-// -------------------------------------------------------------------------------------------------
 
 /*
  * Created once at the start of the application and destroyed at the end. However, it is possible
@@ -159,7 +147,7 @@ void vkt::HelloVK::createInstance() {
 
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.pApplicationName = "Hello Vulkan!";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.pEngineName = "No Engine";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -350,10 +338,6 @@ void vkt::HelloVK::createLogicalDeviceAndQueue() {
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-// -------------------------------------------------------------------------------------------------
-// #2. Setup process - Create Swapchain and sync objects
-// -------------------------------------------------------------------------------------------------
-
 /*
  * Sync objects are objects used for synchronization. Vulkan has VkFence, VkSemaphore, and VkEvent
  * which are used to control resource access across multiple queues. These objects are needed if
@@ -462,8 +446,7 @@ void vkt::HelloVK::createSwapChain() {
     swapChainExtent = displaySizeIdentity;
 }
 
-vkt::SwapChainSupportDetails vkt::HelloVK::querySwapChainSupport(
-        VkPhysicalDevice device) {
+vkt::SwapChainSupportDetails vkt::HelloVK::querySwapChainSupport(VkPhysicalDevice device) {
     SwapChainSupportDetails details;
 
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface,
@@ -506,10 +489,6 @@ void vkt::HelloVK::recreateSwapChain() {
     createImageViews();
     createFramebuffers();
 }
-
-// -------------------------------------------------------------------------------------------------
-// #3. Setup process - Create Renderpass and Framebuffer
-// -------------------------------------------------------------------------------------------------
 
 /*
  * VkImageView: Describes how to access a VkImage, specifying the image's subresource range, pixel
@@ -614,10 +593,6 @@ void vkt::HelloVK::createFramebuffers() {
     }
 }
 
-// -------------------------------------------------------------------------------------------------
-// #4. Setup process - Create Shader and Pipeline
-// -------------------------------------------------------------------------------------------------
-
 /*
  * A VkShaderModule is a Vulkan object representing a programmable shader. Shaders are used to
  * perform various operations on graphics data, such as transforming vertices, shading pixels, and
@@ -646,8 +621,7 @@ void vkt::HelloVK::createDescriptorSetLayout() {
     samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     samplerLayoutBinding.pImmutableSamplers = nullptr;
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings =
-            {uboLayoutBinding, samplerLayoutBinding};
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -708,6 +682,7 @@ void vkt::HelloVK::createGraphicsPipeline() {
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
+    // creating te shaders
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType =
             VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -725,18 +700,21 @@ void vkt::HelloVK::createGraphicsPipeline() {
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo,
                                                       fragShaderStageInfo};
 
+    // Store the binding and attribute descriptions in variables
+    VkVertexInputBindingDescription bindingDescription = Vertex::getBindingDescription();
+    std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    // Setting up the vertex input info
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = 2;
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; // drawing triangles
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
     VkPipelineViewportStateCreateInfo viewportState{};
@@ -750,18 +728,15 @@ void vkt::HelloVK::createGraphicsPipeline() {
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
-
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
     rasterizer.depthBiasSlopeFactor = 0.0f;
 
     VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
     multisampling.minSampleShading = 1.0f;
@@ -776,8 +751,7 @@ void vkt::HelloVK::createGraphicsPipeline() {
     colorBlendAttachment.blendEnable = VK_FALSE;
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
-    colorBlending.sType =
-            VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.logicOp = VK_LOGIC_OP_COPY;
     colorBlending.attachmentCount = 1;
@@ -828,10 +802,6 @@ void vkt::HelloVK::createGraphicsPipeline() {
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
 }
 
-// -------------------------------------------------------------------------------------------------
-// #5. Setup process - DescriptorSet and Uniform Buffer
-// -------------------------------------------------------------------------------------------------
-
 /*
  * A VkDescriptorSet is a Vulkan object that represents a collection of descriptor resources.
  * Descriptor resources are used to provide shader inputs, such as uniform buffers, image samplers,
@@ -858,10 +828,56 @@ void vkt::HelloVK::createDescriptorPool() {
 }
 
 /*
+ * Specify our Uniform Buffer struct and create the uniform buffers. Remember to allocate the memory
+ * from the VkDeviceMemory using vkAllocateMemory and bind the buffer to the memory using
+ * vkBindBufferMemory.
+ */
+void vkt::HelloVK::createUniformBuffers() {
+    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBufferMemory.resize(MAX_FRAMES_IN_FLIGHT);
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     uniformBuffers[i], uniformBufferMemory[i]);
+    }
+}
+
+/*
+ * You may also need to update the Uniform Buffer as we are using the same transformation matrix for
+ * all the vertices we're rendering.
+ */
+void vkt::HelloVK::updateUniformBuffer(uint32_t currentImage) {
+    UniformBufferObject ubo = {};
+    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f),
+                            glm::vec3(0.0f, 1.0f, 0.0f));  // Example: Model matrix
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, -3.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                           glm::vec3(0.0f, 1.0f, 0.0f));  // View matrix
+    ubo.projection = glm::perspective(glm::radians(45.0f),
+                                      swapChainExtent.width / (float) swapChainExtent.height, 0.1f,
+                                      10.0f);  // Projection matrix
+    ubo.projection[1][1] *= -1;  // Vulkan clip space has inverted Y axis
+
+    void *data;
+    vkMapMemory(device, uniformBufferMemory[currentImage], 0, sizeof(ubo), 0,
+                &data);
+    memcpy(data, &ubo, sizeof(ubo));
+    vkUnmapMemory(device, uniformBufferMemory[currentImage]);
+}
+
+/*
  * Create VkDescriptorSets allocated from the VkDescriptorPool specified.
+ * descriptor sets are primarily used to bind resources like:
+ * - Uniform buffers (used for transformation data, lights, etc.).
+ * - Textures (used by fragment shaders to sample data).
+ * - Samplers (used to control how textures are sampled).
  */
 void vkt::HelloVK::createDescriptorSets() {
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
+
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = descriptorPool;
@@ -884,10 +900,10 @@ void vkt::HelloVK::createDescriptorSets() {
 
         std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
 
-        // Uniform buffer
+        // Uniform buffer descriptor
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrites[0].dstSet = descriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstBinding = 0; // Binding location for the uniform buffer
         descriptorWrites[0].dstArrayElement = 0;
         descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         descriptorWrites[0].descriptorCount = 1;
@@ -896,7 +912,7 @@ void vkt::HelloVK::createDescriptorSets() {
         // Combined image sampler
         descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         descriptorWrites[1].dstSet = descriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstBinding = 1; // Binding location for the texture
         descriptorWrites[1].dstArrayElement = 0;
         descriptorWrites[1].descriptorType =
                 VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -909,30 +925,39 @@ void vkt::HelloVK::createDescriptorSets() {
     }
 }
 
-/*
- * Specify our Uniform Buffer struct and create the uniform buffers. Remember to allocate the memory
- * from the VkDeviceMemory using vkAllocateMemory and bind the buffer to the memory using
- * vkBindBufferMemory.
- */
-void vkt::HelloVK::createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+void vkt::HelloVK::createPlaneBuffer() {
+    // Create a staging buffer to copy the vertex data
+    createBuffer(
+            sizeof(planeVertices[0]) * planeVertices.size(),
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            stagingBuffer,
+            stagingMemory
+    );
 
-    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    // Copy the vertex data to the staging buffer
+    void *data;
+    vkMapMemory(device, stagingMemory, 0, VK_WHOLE_SIZE, 0, &data);
+    memcpy(data, planeVertices.data(), sizeof(planeVertices[0]) * planeVertices.size());
+    vkUnmapMemory(device, stagingMemory);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     uniformBuffers[i], uniformBuffersMemory[i]);
-    }
+    // Create the actual vertex buffer for the plane
+    createBuffer(
+            sizeof(planeVertices[0]) * planeVertices.size(),
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            planeVertexBuffer,
+            planeVertexBufferMemory
+    );
+
+    // Copy data from the staging buffer to the vertex buffer
+    copyBuffer(stagingBuffer, planeVertexBuffer, sizeof(planeVertices[0]) * planeVertices.size());
+
+    // Cleanup staging buffer
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingMemory, nullptr);
 }
 
-/*
- * Create a buffer with specified usage and memory properties i.e a uniform buffer which uses
- * HOST_COHERENT memory Upon creation, these buffers will list memory requirements which need to
- * be satisfied by the device in use in order to be created.
- */
 void vkt::HelloVK::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                                 VkMemoryPropertyFlags properties, VkBuffer &buffer,
                                 VkDeviceMemory &bufferMemory) {
@@ -978,10 +1003,6 @@ uint32_t vkt::HelloVK::findMemoryType(uint32_t typeFilter,
     assert(false);  // failed to find suitable memory type!
     return -1;
 }
-
-// -------------------------------------------------------------------------------------------------
-// #6. Setup process - Command Buffer: create, record and Draw
-// -------------------------------------------------------------------------------------------------
 
 /*
  * VkCommandPool is a simple object that is used to allocate CommandBuffers. It is connected to a
@@ -1056,49 +1077,13 @@ void vkt::HelloVK::recordCommandBuffer(VkCommandBuffer commandBuffer,
                             pipelineLayout, 0, 1, &descriptorSets[currentFrame],
                             0, nullptr);
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    // Bind the plane vertex buffer and draw the plane
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &planeVertexBuffer, offsets);
+    vkCmdDraw(commandBuffer, static_cast<uint32_t>(planeVertices.size()), 1, 0, 0);
+
     vkCmdEndRenderPass(commandBuffer);
     VK_CHECK(vkEndCommandBuffer(commandBuffer));
-}
-
-/*
- * getPrerotationMatrix handles screen rotation with 3 hardcoded rotation
- * matrices (detailed below). We skip the 180 degrees rotation.
- */
-void getPrerotationMatrix(const VkSurfaceCapabilitiesKHR &capabilities,
-                          const VkSurfaceTransformFlagBitsKHR &pretransformFlag,
-                          glm::mat4 &mat, float ratio) {
-
-    mat = glm::mat4(1.0f); // mat is initialized to the identity matrix
-    mat = glm::scale(mat, glm::vec3(1.0f, ratio, 1.0f)); // scale by screen ratio
-
-    // rotate 0.5 degree every function call.
-    static float currentAngleDegrees = 0.0f;
-    currentAngleDegrees += 0.5f;
-    if (currentAngleDegrees >= 360.0f) {
-        currentAngleDegrees = 0.0f;
-    }
-    mat = glm::rotate(mat, glm::radians(currentAngleDegrees), glm::vec3(0.0f, 0.0f, 1.0f));
-}
-
-/*
- * You may also need to update the Uniform Buffer as we are using the same transformation matrix for
- * all the vertices we're rendering.
- */
-void vkt::HelloVK::updateUniformBuffer(uint32_t currentImage) {
-    VkSurfaceCapabilitiesKHR capabilities{};
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface,
-                                              &capabilities);
-
-    UniformBufferObject ubo{};
-    float ratio = (float) swapChainExtent.width / (float) swapChainExtent.height;
-    getPrerotationMatrix(capabilities, pretransformFlag,
-                         ubo.mvp, ratio);
-    void *data;
-    vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0,
-                &data);
-    memcpy(data, glm::value_ptr(ubo.mvp), sizeof(glm::mat4));
-    vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
 }
 
 /*
@@ -1192,238 +1177,39 @@ void vkt::HelloVK::onOrientationChange() {
     orientationChanged = false;
 }
 
-// -------------------------------------------------------------------------------------------------
-// #6. Apply texture
-// -------------------------------------------------------------------------------------------------
+void vkt::HelloVK::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
 
-/*
- * To apply texture to the triangle, the image file first needs to be loaded in uncompressed format
- * in memory.
- */
-void vkt::HelloVK::decodeImage() {
-    std::vector<uint8_t> imageData = LoadBinaryFileToVector("img.png",
-                                                            assetManager);
-    if (imageData.size() == 0) {
-        LOGE("Fail to load image.");
-        return;
-    }
-
-    // Make sure we have an alpha channel, not all hardware can do linear filtering of RGB888.
-    const int requiredChannels = 4;
-    unsigned char *decodedData = stbi_load_from_memory(imageData.data(),
-                                                       imageData.size(), &textureWidth,
-                                                       &textureHeight, &textureChannels,
-                                                       requiredChannels);
-    if (decodedData == nullptr) {
-        LOGE("Fail to load image to memory, %s", stbi_failure_reason());
-        return;
-    }
-
-    if (textureChannels != requiredChannels) {
-        textureChannels = requiredChannels;
-    }
-
-    size_t imageSize = textureWidth * textureHeight * textureChannels;
-
-    VkBufferCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    createInfo.size = imageSize;
-    createInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    createInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_CHECK(vkCreateBuffer(device, &createInfo, nullptr, &stagingBuffer));
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, stagingBuffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits,
-                                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                               VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory));
-    VK_CHECK(vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0));
-
-    uint8_t *data;
-    VK_CHECK(vkMapMemory(device, stagingMemory, 0, memRequirements.size, 0,
-                         (void **) &data));
-    memcpy(data, decodedData, imageSize);
-    vkUnmapMemory(device, stagingMemory);
-
-    stbi_image_free(decodedData);
-}
-
-/*
- * create VkImage from the VkBuffer populated with the image data from the earlier step. VkImage is
- * the object that holds the actual texture data. It holds the pixel data into the main memory of
- * the texture, but doesn't contain a lot of information on how to read it. That's why we need to
- * create VkImageView in the next section.
- */
-void vkt::HelloVK::createTextureImage() {
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = textureWidth;
-    imageInfo.extent.height = textureHeight;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage =
-            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VK_CHECK(vkCreateImage(device, &imageInfo, nullptr, &textureImage));
-
-    VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(device, textureImage, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits,
-                                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &textureImageMemory));
-
-    vkBindImageMemory(device, textureImage, textureImageMemory, 0);
-}
-
-/*
- * Copies data from a staging buffer to a texture image in Vulkan. It involves several steps
- * including image layout transitions, command buffer creation, and submitting the command buffer
- * for execution
- */
-void vkt::HelloVK::copyBufferToImage() {
-    VkImageSubresourceRange subresourceRange{};
-    subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    subresourceRange.baseMipLevel = 0;
-    subresourceRange.levelCount = 1;
-    subresourceRange.layerCount = 1;
-
-    VkImageMemoryBarrier imageMemoryBarrier{};
-    imageMemoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imageMemoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    imageMemoryBarrier.image = textureImage;
-    imageMemoryBarrier.subresourceRange = subresourceRange;
-    imageMemoryBarrier.srcAccessMask = 0;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-
-    VkCommandBuffer cmd;
-    VkCommandBufferAllocateInfo cmdAllocInfo{};
-    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdAllocInfo.commandPool = commandPool;
-    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmdAllocInfo.commandBufferCount = 1;
-
-    VK_CHECK(vkAllocateCommandBuffers(device, &cmdAllocInfo, &cmd));
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    vkBeginCommandBuffer(cmd, &beginInfo);
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_HOST_BIT,
-                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0,
-                         nullptr, 1, &imageMemoryBarrier);
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
-    VkBufferImageCopy bufferImageCopy{};
-    bufferImageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    bufferImageCopy.imageSubresource.mipLevel = 0;
-    bufferImageCopy.imageSubresource.baseArrayLayer = 0;
-    bufferImageCopy.imageSubresource.layerCount = 1;
-    bufferImageCopy.imageExtent.width = textureWidth;
-    bufferImageCopy.imageExtent.height = textureHeight;
-    bufferImageCopy.imageExtent.depth = 1;
-    bufferImageCopy.bufferOffset = 0;
+    VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = 0; // Optional
+    copyRegion.dstOffset = 0; // Optional
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
-    vkCmdCopyBufferToImage(cmd, stagingBuffer, textureImage,
-                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                           1, &bufferImageCopy);
-
-    imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    imageMemoryBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    imageMemoryBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr,
-                         0, nullptr, 1, &imageMemoryBarrier);
-
-    vkEndCommandBuffer(cmd);
+    vkEndCommandBuffer(commandBuffer);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &cmd;
+    submitInfo.pCommandBuffers = &commandBuffer;
 
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE));
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(graphicsQueue);
-}
 
-/*
- * Create VkImageView and VkSampler which can be used by the fragment shader to sample the color for
- * each of the rendered pixels.
- *
- * sVkImageView is a wrapper on top of the VkImage. It holds information about how to interpret the
- * data of the texture, for example, if you want to only access a region or layer, and if you want
- * to shuffle the pixel channels in a specific way.
- *
- * VkSampler holds the data for the specific shader access to the texture. It holds information
- * about how to blend the pixels, or how to do mipmapping. Samplers are used with VkImageViews in
- * descriptors.
- */
-void vkt::HelloVK::createTextureImageViews() {
-    VkImageViewCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    createInfo.image = textureImage;
-    createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    createInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
-    createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    createInfo.subresourceRange.baseMipLevel = 0;
-    createInfo.subresourceRange.levelCount = 1;
-    createInfo.subresourceRange.baseArrayLayer = 0;
-    createInfo.subresourceRange.layerCount = 1;
-
-    VK_CHECK(vkCreateImageView(device, &createInfo, nullptr, &textureImageView));
-}
-
-/*
- * creates a sampler that defines how textures are filtered when being applied to 3D models. It's
- * especially important for rendering textures with the desired appearance in your application,
- * influencing how textures are scaled, repeated, and filtered when viewed from different angles
- * or distances.
- */
-void vkt::HelloVK::createTextureSampler() {
-    VkSamplerCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    createInfo.magFilter = VK_FILTER_LINEAR;
-    createInfo.minFilter = VK_FILTER_LINEAR;
-    createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    createInfo.anisotropyEnable = VK_FALSE;
-    createInfo.maxAnisotropy = 16;
-    createInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    createInfo.unnormalizedCoordinates = VK_FALSE;
-    createInfo.compareEnable = VK_FALSE;
-    createInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-    createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    createInfo.mipLodBias = 0.0f;
-    createInfo.minLod = 0.0f;
-    createInfo.maxLod = VK_LOD_CLAMP_NONE;
-
-    VK_CHECK(vkCreateSampler(device, &createInfo, nullptr, &textureSampler));
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1478,7 +1264,7 @@ void vkt::HelloVK::cleanup() {
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+        vkFreeMemory(device, uniformBufferMemory[i], nullptr);
     }
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
@@ -1563,5 +1349,3 @@ void vkt::HelloVK::establishDisplaySizeIdentity() {
 
     displaySizeIdentity = capabilities.currentExtent;
 }
-
-void vkt::HelloVK::createDevice() {}

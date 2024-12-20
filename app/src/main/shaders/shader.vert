@@ -1,26 +1,18 @@
 #version 450
 
-// Uniform buffer containing an MVP matrix.
-// Currently the vulkan backend only sets the rotation matix required to handle device rotation.
-layout(binding = 0) uniform UniformBufferObject {
-    mat4 MVP;
-} ubo;
+layout(location = 0) in vec3 inPos;    // Position from vertex data
+layout(location = 1) in vec3 inColor;  // Color from vertex data
 
-vec2 positions[3] = vec2[](
-    vec2(0.0, 0.577),
-    vec2(-0.5, -0.289),
-    vec2(0.5, -0.289)
-);
+out vec3 fragColor; // Output to fragment shader
 
-vec2 texCoords[3] = vec2[](
-    vec2(0.5, 1.0),
-    vec2(0.0, 0.0),
-    vec2(1.0, 0.0)
-);
-
-layout(location = 0) out vec2 vTexCoords;
+uniform mat4 model;        // Model matrix
+uniform mat4 view;         // View matrix
+uniform mat4 projection;   // Projection matrix
 
 void main() {
-    gl_Position = ubo.MVP * vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    vTexCoords = texCoords[gl_VertexIndex];
+    // Apply the transformation using the correct order
+    gl_Position = projection * view * model * vec4(inPos, 1.0);
+
+    // Pass the color to the fragment shader
+    fragColor = inColor;
 }

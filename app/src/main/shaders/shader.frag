@@ -1,12 +1,9 @@
 #version 450
 
-layout(location = 0) in vec2 vTexCoords;
+in vec3 fragColor;  // Input color from vertex shader
 
-layout(binding = 1) uniform sampler2D samp;
-
-// Output colour for the fragment
-layout(location = 0) out vec4 outColor;
+out vec4 color;     // Output color to the framebuffer
 
 void main() {
-    outColor = texture(samp, vTexCoords);
+    color = vec4(fragColor, 1.0); // Set the color to the passed value with full opacity
 }
