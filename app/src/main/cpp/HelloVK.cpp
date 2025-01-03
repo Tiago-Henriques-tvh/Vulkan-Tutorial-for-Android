@@ -2,6 +2,11 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_ENABLE_EXPERIMENTAL
+#define GLM_FORCE_LEFT_HANDED
+
 #include <stb_image.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1040,18 +1045,22 @@ void vkt::HelloVK::updateUniformBuffer(uint32_t currentImage) {
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(
             currentTime - startTime).count();
+    float ratio =
+            static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height);
 
     UniformBufferObject ubo{};
     ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f),
                             glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f),
-                           glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f),
-                                swapChainExtent.width / (float) swapChainExtent.height, 0.1f,
-                                10.0f);
-    ubo.proj[1][1] *= -1;
+    ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, -4.0f), glm::vec3(0.0f, 0.0f, 0.0f),
+                           glm::vec3(0.0f, -1.0f, 0.0f));
+    float FOV = glm::radians(45.0f);
+    ubo.proj = glm::perspective(FOV, ratio, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1; // invert the Y-axis component
 
-    memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
+    void *data;
+    vkMapMemory(device, uniformBuffersMemory[currentImage], 0, sizeof(ubo), 0, &data);
+    memcpy(data, &ubo, sizeof(ubo));
+    vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
 }
 
 void vkt::HelloVK::createDescriptorSets() {
