@@ -1432,8 +1432,7 @@ void vkt::HelloVK::setupDebugMessenger() {
                                           &debugMessenger));
 }
 
-std::vector<const char *> vkt::HelloVK::getRequiredExtensions(
-        bool enableValidationLayers) {
+std::vector<const char *> vkt::HelloVK::getRequiredExtensions(bool enableValidationLayers) {
     std::vector<const char *> extensions;
     extensions.push_back("VK_KHR_surface");
     extensions.push_back("VK_KHR_android_surface");

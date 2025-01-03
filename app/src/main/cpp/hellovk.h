@@ -149,7 +149,6 @@ namespace vkt {
 
         void createLogicalDeviceAndQueue();
 
-
         void createSwapChain();
 
         void createImageViews();
@@ -223,8 +222,6 @@ namespace vkt {
 
         void createTextureImage();
 
-        void chooseSwapExtent();
-
         VkImageView createImageView(VkImage image, VkFormat format);
 
         void createTextureSampler();
@@ -271,7 +268,7 @@ namespace vkt {
         std::unique_ptr<ANativeWindow, ANativeWindowDeleter> window;
         AAssetManager *assetManager;
 
-        bool enableValidationLayers = false;
+        bool enableValidationLayers = true;
         const std::vector<const char *> validationLayers = {"VK_LAYER_KHRONOS_validation"};
         const std::vector<const char *> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
